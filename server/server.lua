@@ -54,13 +54,13 @@ function closeAPI(reason)
         printColor(reason, colors.red)
         print()
     end
-        printColor("Stopping the API!", colors.red)
-        printColor("Closing the host and turning off the modem...", colors.red)
-        printColor("Successfully completed.", colors.red)
-        printColor("Goodbye  :3", colors.yellow)
-        rednet.unhost(protocol)
-        rednet.close(modem)
-        error()
+    printColor("Stopping the API!", colors.red)
+    printColor("Closing the host and turning off the modem...", colors.red)
+    printColor("Successfully completed.", colors.red)
+    printColor("Goodbye  :3", colors.yellow)
+    rednet.unhost(protocol)
+    rednet.close(modem)
+    error()
 end
 
 if not commands then
@@ -74,7 +74,6 @@ function convertToC(coordinates)
     for part in string.gmatch(coordinates, "-?%d+") do
         table.insert(parts, tonumber(part))
     end
-
     if #parts ~= 3 then
         return nil, "Invalid coordinates format (expected: X Y Z)"
     end
@@ -85,12 +84,10 @@ function getBlockInfo(x, y, z)
     if debugMode then
         print(d .. "getBlockInfo received data: " .. x .. " " .. y .. " " .. z)
     end
-
     local success, blockInfo = pcall(commands.getBlockInfo, x, y, z)
     if not success then
         return nil, "Failed to get block info"
     end
-
     local function buildResult(tbl)
         local result = {}
         for key, value in pairs(tbl) do
@@ -102,37 +99,57 @@ function getBlockInfo(x, y, z)
         end
         return result
     end
-
     return buildResult(blockInfo)
 end
 
-while true do
-    -- i'll fix it soon.
-    -- local event, senderId, message = os.pullEventRaw()
-    -- if event == "terminate" then closeAPI() end
-    local senderId, message = rednet.receive()
-    if senderId and message then
-        printColor(("Coordinates %s from computer #%d"):format(message, senderId), colors.yellow)
+local queue = {}
 
-        if not string.find(message, "%s") then
-            rednet.send(senderId, "Bad request: Coordinates must be space-separated")
-            printColor("Bad request", colors.orange)
-        else
-            local xyz, err = convertToC(message)
-            if not xyz then
-                rednet.send(senderId, "Bad request: " .. err)
-                printColor("Error: " .. err, colors.orange)
+function requestListener()
+    while true do
+        local senderId, message = rednet.receive()
+        table.insert(queue, {id = senderId, msg = message})
+        printColor(("Request from #%d: %s"):format(senderId, message), colors.yellow)
+    end
+end
+
+function requestProcessor()
+    while true do
+        if #queue > 0 then
+            local request = table.remove(queue, 1)
+            local senderId = request.id
+            local message = request.msg
+
+            if not string.find(message, "%s") then
+                rednet.send(senderId, "Bad request: Coordinates must be space-separated")
+                printColor("Bad request", colors.orange)
             else
-                local blockData, err = getBlockInfo(xyz[1], xyz[2], xyz[3])
-                if blockData then
-                    sleep(0.1)
-                    rednet.send(senderId, blockData)
-                    printColor("Data returned successfully!", colors.lime)
-                else
-                    rednet.send(senderId, "Error: " .. err)
+                local xyz, err = convertToC(message)
+                if not xyz then
+                    rednet.send(senderId, "Bad request: " .. err)
                     printColor("Error: " .. err, colors.orange)
+                else
+                    local blockData, err = getBlockInfo(xyz[1], xyz[2], xyz[3])
+                    if blockData then
+                        rednet.send(senderId, blockData)
+                        printColor("Data returned successfully!", colors.lime)
+                    else
+                        rednet.send(senderId, "Error: " .. err)
+                        printColor("Error: " .. err, colors.orange)
+                    end
                 end
             end
+        else
+            sleep(0)
         end
     end
 end
+
+-- NOTE: FIX IT
+function terminateListener() -- I tried to fix that :(
+    while true do
+        os.pullEvent("terminate")
+        closeAPI("Terminate signal received")
+    end
+end
+
+parallel.waitForAny(requestListener, requestProcessor, terminateListener)
