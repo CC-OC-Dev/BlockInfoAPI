@@ -17,6 +17,11 @@ A **command computer** runs the server-side script, handling requests from clien
    ```
    server.lua
    ```
+NOTE:
+   **It is recommended to rename the script to startup.lua or create a file called startup.lua and include
+   `shell.run("server.lua")`
+   This way, the server will start automatically when entering the world.**
+
 
 ### 💻 Client-Side Installation (Standard or Advanced Computer)
 1. Open the **client computer**.
